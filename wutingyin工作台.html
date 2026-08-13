@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>我的外贸工作台 v3</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:#f0f2f5;color:#222;font-size:14px}
+header{background:#16213e;color:#fff;padding:10px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+header h1{font-size:17px}
+header select,header button{padding:6px 10px;border:none;border-radius:6px;cursor:pointer}
+header .sp{flex:1}
+nav{background:#1f2b4d;display:flex;gap:4px;padding:8px 12px;flex-wrap:wrap}
+nav button{background:none;color:#cfd8ea;border:none;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:13px}
+nav button.on{background:#3b82f6;color:#fff}
+main{padding:16px;max-width:1200px;margin:0 auto}
+.cards{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.card{background:#fff;border-radius:10px;padding:14px 20px;min-width:110px;box-shadow:0 1px 3px rgba(0,0,0,.08);cursor:pointer}
+.card b{font-size:22px;display:block}
+.card span{color:#888;font-size:12px}
+.panel{background:#fff;border-radius:10px;padding:16px;margin-bottom:16px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.panel h3{margin-bottom:12px;font-size:15px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{border-bottom:1px solid #eee;padding:8px;text-align:left;vertical-align:top}
+th{background:#f8f9fb}
+button.act{background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;margin:2px}
+button.mini{background:#eef2ff;color:#3b5bdb;border:none;border-radius:5px;padding:4px 8px;cursor:pointer;margin:1px;font-size:12px}
+button.warn{background:#fee2e2;color:#b91c1c}
+input,select,textarea{padding:7px;border:1px solid #d5d9e0;border-radius:6px;font-size:13px;margin:3px;font-family:inherit}
+textarea{width:100%;min-height:60px}
+.tag{display:inline-block;background:#e0e7ff;color:#3730a3;border-radius:4px;padding:2px 8px;font-size:12px;margin:2px}
+.tag.red{background:#fee2e2;color:#b91c1c}
+.tag.green{background:#dcfce7;color:#15803d}
+.aiout{background:#f8fafc;border:1px dashed #b6c2d9;border-radius:8px;padding:10px;margin-top:8px;white-space:pre-wrap}
+.note{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px;margin-bottom:14px;font-size:13px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.hide{display:none}
+small{color:#888}
+.f label{display:block;margin:8px 0 2px;font-size:13px;color:#555}
+.f input,.f select,.f textarea{width:100%;margin:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+@media(max-width:800px){.grid2{grid-template-columns:1fr}}
+#lock{position:fixed;inset:0;background:#16213e;display:flex;align-items:center;justify-content:center;z-index:99}
+#lock .box{background:#fff;border-radius:12px;padding:30px;width:320px;text-align:center}
+#lock input{width:90%;margin:10px 0;padding:10px;border:1px solid #d5d9e0;border-radius:6px;font-size:15px}
+#lock .act{background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:10px 30px;cursor:pointer;font-size:15px}
+#lock .act:hover{background:#2563eb}
+#lock .error{color:#b91c1c;font-size:13px;margin-top:8px}
+.chat{max-height:420px;overflow-y:auto;border:1px solid #eee;border-radius:8px;padding:10px;background:#fbfcfe}
+.msg{margin:6px 0;padding:8px 12px;border-radius:10px;max-width:85%;white-space:pre-wrap}
+.msg.u{background:#dbeafe;margin-left:auto}
+.msg.a{background:#f1f5f9}
+</style>
+</head>
+<body>
+<div id="lock"><div class="box">
+<h2>🔐 我的外贸工作台</h2>
+<p style="color:#888;font-size:13px;margin-bottom:6px;">请输入密码进入</p>
+<input id="lockPw" type="password" placeholder="输入密码" autofocus>
+<button class="act" onclick="unlock()">进入</button>
+<p id="lockTip" class="error"></p>
+</div></div>
+
+<header>
+<h1> 🌐 我的外贸工作台 <small>v3</small></h1>
+<select id="wsSel" onchange="switchWS(this.value)"></select>
+<button onclick="newWS()">➕ 工作区</button>
+<button onclick="delWS()">🗑 删工作区</button>
+<span class="sp"></span>
+<button onclick="exportData()">💾 备份</button>
+<button onclick="document.getElementById('importFile').click()">📂 导入</button>
+<input type="file" id="importFile" class="hide" accept=".json" onchange="importData(this)">
+<button onclick="openAI()">⚙️ AI 设置</button>
+<button onclick="setPw()">🔐 改密码</button>
+</header>
+<nav id="nav"></nav>
+<main id="main"></main>
+
+<script>
+// ======================================================================
+// 基础数据
+// ======================================================================
+let DB = JSON.parse(localStorage.getItem('tradeDesk_v3')||'null') || {workspaces:[],ai:{provider:'deepseek',key:'',model:'deepseek-chat'},pw:'aiwutingyin'};
+if (!DB.pw) DB.pw = 'aiwutingyin';
+let cur=0, tab='dash', aiBuf={};
+
+function save(){localStorage.setItem('tradeDesk_v3',JSON.stringify(DB))}
+function WS(){return DB.workspaces[cur]}
+function today(){return new Date().toISOString().slice(0,10)}
+function nowHM(){return new Date().toTimeString().slice(0,5)}
+function esc(s){return (s==null?'':String(s)).replace(/</g,'&lt;')}
+function monthKey(){return today().slice(0,7)}
+
+// ======================================================================
+// 密码锁
+// ======================================================================
+function checkLock(){
+    if (DB.pw) {
+        document.getElementById('lock').style.display = 'flex';
+        document.getElementById('lockPw').value = '';
+        document.getElementById('lockTip').textContent = '';
+        document.getElementById('lockPw').focus();
+        document.getElementById('lockPw').onkeydown = function(e) {
+            if (e.key === 'Enter') unlock();
+        };
+    } else {
+        document.getElementById('lock').style.display = 'none';
+    }
+}
+
+function unlock(){
+    const input = document.getElementById('lockPw').value;
+    if (input === DB.pw) {
+        document.getElementById('lock').style.display = 'none';
+        document.getElementById('lockTip').textContent = '';
+    } else {
+        document.getElementById('lockTip').textContent = '❌ 密码不对';
+        document.getElementById('lockPw').value = '';
+        document.getElementById('lockPw').focus();
+    }
+}
+
+function setPw(){
+    const p = prompt('设置/修改登录密码（留空=取消密码）：', DB.pw || '');
+    if (p === null) return;
+    DB.pw = p.trim() || '';
+    save();
+    alert(p.trim() ? '✅ 密码已设置' : '✅ 已取消密码锁');
+    if (!DB.pw) {
+        document.getElementById('lock').style.display = 'none';
+    } else {
+        document.getElementById('lock').style.display = 'flex';
+        document.getElementById('lockPw').value = '';
+        document.getElementById('lockTip').textContent = '新密码已设置，请重新输入';
+        document.getElementById('lockPw').focus();
+    }
+}
+
+// ======================================================================
+// 工作区管理
+// ======================================================================
+function blankWS(name){return {name:name||'我的工作区',markets:['澳大利亚','德国','美国','东南亚'],
+ customers:[],suppliers:[],pos:[],orders:[],worklog:[],competitors:[],chat:[],radar:{q:''},pick:{}}}
+function initWS(){if(!DB.workspaces.length){DB.workspaces.push(blankWS('我的工作区'));save()}
+ if(cur>=DB.workspaces.length)cur=0;
+ const s=document.getElementById('wsSel');s.innerHTML=DB.workspaces.map((w,i)=>`<option value="${i}">${esc(w.name)}</option>`).join('');s.value=cur}
+function switchWS(i){cur=+i;initWS();render()}
+function newWS(){const n=prompt('新工作区名称：');if(n){DB.workspaces.push(blankWS(n));save();cur=DB.workspaces.length-1;initWS();render()}}
+function delWS(){if(DB.workspaces.length<=1){alert('至少保留一个');return}
+ if(confirm('删除【'+WS().name+'】及全部数据？')){DB.workspaces.splice(cur,1);cur=0;save();initWS();render()}}
+
+// ======================================================================
+// 提醒
+// ======================================================================
+function reminders(){const w=WS(),r=[],t=Date.now();
+ const tr=todayRec();
+ if(!tr||!tr.amIn)r.push('🕐 上午还没打上班卡');
+ else if(tr.amOut&&!tr.pmIn)r.push('🕐 下午上班记得打卡');
+ if(new Date().getDate()>=28)r.push('📅 月底了！去「月度总结」导出数据');
+ w.customers.forEach(c=>{if(c.next&&c.next<=today()&&c.status!=='已成交'&&c.status!=='已沉睡')r.push(`⏰ 客户【${c.name}】今天该跟进（${c.status}）`)});
+ w.pos.forEach(p=>{if(p.status!=='已完成'&&p.due&&p.due<=today())r.push(` 采购单【${p.supplier}】交期到了`)});
+ w.orders.forEach(o=>{if(o.status==='已签收'&&!o.reviewDone)r.push(`⭐ 订单【${o.customer}】已签收，提醒好评`)});
+ w.suppliers.forEach(s=>{if(s.lastContact){const d=(t-new Date(s.lastContact).getTime())/86400000;if(d>60)r.push(`🤝 供应商【${s.name}】${Math.floor(d)} 天没联系`)}
+  if(s.priceAlert)r.push(`💰 供应商【${s.name}】报价变动：${s.priceAlert}`)});
+ return r}
+
+// ======================================================================
+// 渲染主函数
+// ======================================================================
+const TABS=[['dash','📊 总览'],['work','🕐 日志'],['month','📅 月度'],['cus','👥 客户'],['sup','🏭 供应商'],['po','📦 采购'],['ord','🚢 订单'],['pick','🎯 选品'],['comp','⚔️ 同行'],['radar','🔥 热点'],['tool','🧰 工具'],['chat','💬 导师'],['ai','🤖 AI']];
+function render(){
+ document.getElementById('nav').innerHTML=TABS.map(t=>`<button class="${tab===t[0]?'on':''}" onclick="go('${t[0]}')">${t[1]}</button>`).join('');
+ const r=reminders();let html='';
+ if(r.length)html+=`<div class="note"><b>今日提醒（${r.length}）</b><br>`+r.map(x=>'• '+esc(x)).join('<br>')+`</div>`;
+ const F={dash:vDash,work:vWork,month:vMonth,cus:vCus,sup:vSup,po:vPO,ord:vOrd,pick:vPick,comp:vComp,radar:vRadar,tool:vTool,chat:vChat,ai:vAI};
+ html+=F[tab]();document.getElementById('main').innerHTML=html}
+function go(t){tab=t;render()}
+
+// ======================================================================
+// 总览
+// ======================================================================
+function vDash(){const w=WS();
+ return `<div class="cards">
+ <div class="card" onclick="go('sup')"><b>${w.suppliers.length}</b><span>供应商</span></div>
+ <div class="card" onclick="go('cus')"><b>${w.customers.length}</b><span>客户</span></div>
+ <div class="card" onclick="go('cus')"><b>${w.customers.filter(c=>c.status!=='已成交'&&c.status!=='已沉睡').length}</b><span>跟进中</span></div>
+ <div class="card" onclick="go('po')"><b>${w.pos.filter(p=>p.status!=='已完成').length}</b><span>进行中采购</span></div>
+ <div class="card" onclick="go('ord')"><b>${w.orders.filter(o=>o.status!=='已完成').length}</b><span>进行中订单</span></div>
+ <div class="card" onclick="go('work')"><b>${(todayRec()&&todayRec().amIn)||'--'}</b><span>今日上班</span></div></div>
+ <div class="panel"><h3>🏆 供应商累计金额</h3>${rankTable(sumBy(w.pos,'supplier'))}</div>
+ <div class="panel"><h3>💎 客户累计成交金额</h3>${rankTable(sumBy(w.orders,'customer'))}</div>
+ <small>"进行中"只统计未完成；金额是历史累计。</small>`}
+function sumBy(list,key){const m={};list.forEach(x=>{m[x[key]]=(m[x[key]]||0)+(+x.amount||0)});return m}
+function rankTable(m){const arr=Object.entries(m).sort((a,b)=>b[1]-a[1]);
+ if(!arr.length)return '<small>暂无数据</small>';
+ return '<table><tr><th>#</th><th>名称</th><th>累计金额</th><th>标签</th></tr>'+arr.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x[0])}</td><td>¥${x[1].toLocaleString()}</td><td>${i<3?'<span class="tag green">深度合作</span>':'<span class="tag">一般</span>'}</td></tr>`).join('')+'</table>'}
+
+// ======================================================================
+// 工作日志
+// ======================================================================
+function WL(){const w=WS();if(!w.worklog)w.worklog=[];return w.worklog}
+function todayRec(){return WL().find(x=>x.date===today())}
+function calcH(r){if(!r)return '';let m=0;
+ if(r.amIn&&r.amOut)m+=toMin(r.amOut)-toMin(r.amIn);
+ if(r.pmIn&&r.pmOut)m+=toMin(r.pmOut)-toMin(r.pmIn);
+ return m?Math.round(m/6)/10:''}
+function toMin(hm){const a=hm.split(':').map(Number);return a[0]*60+a[1]}
+function vWork(){const r=todayRec();
+ return `<div class="cards">
+ <div class="card"><b>${r&&r.amIn||'--:--'}</b><span>上午上班</span></div>
+ <div class="card"><b>${r&&r.amOut||'--:--'}</b><span>上午下班</span></div>
+ <div class="card"><b>${r&&r.pmIn||'--:--'}</b><span>下午上班</span></div>
+ <div class="card"><b>${r&&r.pmOut||'--:--'}</b><span>下午下班</span></div>
+ <div class="card"><b>${calcH(r)||'--'}</b><span>工时(小时)</span></div>
+ ${monthStats()}</div>
+ <div class="panel"><h3>🕐 今日打卡与总结（${today()}）</h3>
+ <div class="row">
+ <button class="act" onclick="clk('amIn')">🌅 上午上班</button>
+ <button class="act" onclick="clk('amOut')"> 上午下班</button>
+ <button class="act" onclick="clk('pmIn')">☀️ 下午上班</button>
+ <button class="act" onclick="clk('pmOut')">🌇 下午下班</button></div>
+ <div class="f"><label>每日工作总结 <button class="mini" onclick="aiSummary()">✨ AI 润色</button></label>
+ <textarea id="wlSum">${r?esc(r.summary):''}</textarea></div>
+ <div class="f"><label>今日成功经验</label>
+ <textarea id="wlWin">${r?esc(r.win):''}</textarea></div>
+ <button class="act" onclick="wlSave()">💾 保存今日日志</button></div>
+ <div class="panel"><h3>📅 历史记录</h3><table><tr><th>日期</th><th>上午</th><th>下午</th><th>工时</th><th>总结</th><th>成功经验</th><th>操作</th></tr>
+ ${WL().slice().sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<tr><td>${x.date}</td><td>${x.amIn||''}~${x.amOut||''}</td><td>${x.pmIn||''}~${x.pmOut||''}</td><td>${calcH(x)||''}</td><td>${esc((x.summary||'').slice(0,50))}</td><td>${esc((x.win||'').slice(0,40))}</td><td><button class="mini" onclick="wlEdit('${x.date}')">编辑</button><button class="mini warn" onclick="wlDel('${x.date}')">删</button></td></tr>`).join('')}
+ </table></div>`}
+function monthStats(){const m=today().slice(0,7);const list=WL().filter(x=>x.date.startsWith(m));
+ const days=list.filter(x=>x.amIn).length;const hrs=list.reduce((s,x)=>s+(+calcH(x)||0),0);
+ return `<div class="card"><b>${days}</b><span>本月出勤</span></div><div class="card"><b>${Math.round(hrs*10)/10}</b><span>本月总工时</span></div>`}
+function clk(f){let r=todayRec();if(!r){r={date:today(),amIn:'',amOut:'',pmIn:'',pmOut:'',summary:'',win:''};WL().push(r)}
+ if(r[f]){alert('这次已经打过了：'+r[f]);return}
+ r[f]=nowHM();save();render();
+ if(f==='pmOut'&&!r.summary)alert('下班打卡成功！记得写今日总结和成功经验 😉')}
+function wlSave(){let r=todayRec();if(!r){r={date:today(),amIn:'',amOut:'',pmIn:'',pmOut:'',summary:'',win:''};WL().push(r)}
+ r.summary=document.getElementById('wlSum').value;r.win=document.getElementById('wlWin').value;save();alert('已保存');render()}
+function wlEdit(date){const r=WL().find(x=>x.date===date);if(!r)return;
+ ['amIn','amOut','pmIn','pmOut'].forEach((f,i)=>{const n=['上午上班','上午下班','下午上班','下午下班'][i];
+  const v=prompt(n+'时间 HH:MM（留空=没打）：',r[f]||'');if(v!==null)r[f]=v});
+ let v=prompt('每日工作总结：',r.summary||'');if(v!==null)r.summary=v;
+ v=prompt('今日成功经验：',r.win||'');if(v!==null)r.win=v;save();render()}
+function wlDel(date){if(confirm('删除 '+date+' 的日志？')){WS().worklog=WL().filter(x=>x.date!==date);save();render()}}
+function aiSummary(){const raw=document.getElementById('wlSum').value;if(!raw){alert('先写几条草稿再润色');return}
+ aiCall(`把以下外贸工作草稿整理成条理清晰的每日工作总结（中文，分点，150字内，专业简洁）：\n${raw}`,out=>{document.getElementById('wlSum').value=out})}
+
+// ======================================================================
+// 月度总结
+// ======================================================================
+function vMonth(){const mk=monthKey();const w=WS();
+ const logs=WL().filter(x=>x.date.startsWith(mk));
+ const days=logs.filter(x=>x.amIn).length;
+ const hrs=Math.round(logs.reduce((s,x)=>s+(+calcH(x)||0),0)*10)/10;
+ const newCus=w.customers.filter(c=>(c.created||'').startsWith(mk)).length;
+ const deals=w.orders.filter(o=>(o.created||'').startsWith(mk));
+ const dealAmt=deals.reduce((s,o)=>s+(+o.amount||0),0);
+ const profit=deals.reduce((s,o)=>s+((+o.amount||0)-(+o.cost||0)-(+o.freight||0)-(+o.misc||0)),0);
+ const pos=w.pos.filter(p=>(p.created||'').startsWith(mk));
+ const poAmt=pos.reduce((s,p)=>s+(+p.amount||0),0);
+ return `<div class="panel"><h3>📅 ${mk} 月度总结</h3>
+ <div class="cards">
+ <div class="card"><b>${days}</b><span>出勤天数</span></div>
+ <div class="card"><b>${hrs}</b><span>总工时</span></div>
+ <div class="card"><b>${newCus}</b><span>新增客户</span></div>
+ <div class="card"><b>${deals.length}</b><span>成交订单</span></div>
+ <div class="card"><b>¥${dealAmt.toLocaleString()}</b><span>销售额</span></div>
+ <div class="card"><b>¥${profit.toLocaleString()}</b><span>利润</span></div>
+ <div class="card"><b>¥${poAmt.toLocaleString()}</b><span>采购额</span></div></div>
+ <div class="row"><button class="act" onclick="monthExcel()">📤 导出本月 Excel 表</button>
+ <button class="act" onclick="monthAI()">✨ AI 写月度总结</button></div>
+ <div class="aiout">${aiBuf.month||'点"AI 写月度总结"，自动生成可复制的月报'}</div>
+ <small>每月28号起总览自动提醒导出。.xls 可用 Excel/WPS 打开。</small></div>`}
+function monthData(){const mk=monthKey();const w=WS();
+ return {mk,w,logs:WL().filter(x=>x.date.startsWith(mk)),
+ orders:w.orders.filter(o=>(o.created||'').startsWith(mk)),
+ pos:w.pos.filter(p=>(p.created||'').startsWith(mk))}}
+function monthExcel(){const d=monthData();let html='<html><head><meta charset="UTF-8"></head><body>';
+ html+='<h2>'+d.mk+' 月度数据</h2>';
+ html+='<h3>工作日志</h3><table border="1"><tr><th>日期</th><th>上午</th><th>下午</th><th>工时</th><th>总结</th><th>成功经验</th></tr>'+d.logs.map(x=>`<tr><td>${x.date}</td><td>${x.amIn||''}~${x.amOut||''}</td><td>${x.pmIn||''}~${x.pmOut||''}</td><td>${calcH(x)||''}</td><td>${esc(x.summary)}</td><td>${esc(x.win)}</td></tr>`).join('')+'</table>';
+ html+='<h3>订单</h3><table border="1"><tr><th>客户</th><th>产品</th><th>售价</th><th>成本</th><th>物流</th><th>杂费</th><th>状态</th></tr>'+d.orders.map(o=>`<tr><td>${esc(o.customer)}</td><td>${esc(o.product)}</td><td>${o.amount}</td><td>${o.cost||0}</td><td>${o.freight||0}</td><td>${o.misc||0}</td><td>${o.status}</td></tr>`).join('')+'</table>';
+ html+='<h3>采购</h3><table border="1"><tr><th>供应商</th><th>产品明细</th><th>金额</th><th>状态</th></tr>'+d.pos.map(p=>`<tr><td>${esc(p.supplier)}</td><td>${esc((p.items||[]).map(i=>i.name+'x'+i.qty).join('；'))}</td><td>${p.amount}</td><td>${p.status}</td></tr>`).join('')+'</table>';
+ html+='</body></html>';
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel'}));
+ a.download='月度总结_'+d.mk+'.xls';a.click()}
+function monthAI(){const d=monthData();
+ const txt=`本月(${d.mk})数据：出勤${d.logs.filter(x=>x.amIn).length}天；新增客户${WS().customers.filter(c=>(c.created||'').startsWith(d.mk)).length}个；成交${d.orders.length}单，销售额${d.orders.reduce((s,o)=>s+(+o.amount||0),0)}元；采购${d.pos.length}单共${d.pos.reduce((s,p)=>s+(+p.amount||0),0)}元。每日摘要：${d.logs.map(x=>x.date+':'+(x.summary||'无')).join('；')}`;
+ aiCall(`你是外贸经理。根据以下数据写一份月度工作总结（中文，结构：业绩概览/重点工作/问题与改进/下月计划），300字内：\n${txt}`,out=>{aiBuf.month=out;save();render()})}
+
+// ======================================================================
+// 客户管理
+// ======================================================================
+const CSTAT=['新线索','已联系','已报价','已寄样','已成交','已沉睡'];
+function vCus(){const w=WS();
+ let rows=w.customers.map((c,i)=>`<tr><td><b>${esc(c.name)}</b><br><small>${esc(c.country||'')} | ${esc(c.channel||'')}</small></td>
+ <td><select onchange="cusStatus(${i},this.value)">${CSTAT.map(s=>`<option ${s===c.status?'selected':''}>${s}</option>`).join('')}</select><br><small>下次跟进:${esc(c.next||'-')}</small></td>
+ <td>${(c.quotes||[]).slice(-2).map(q=>`<span class="tag">${esc(q.name)}</span>`).join('')||'-'}<br>${(c.logs||[]).slice(-1).map(l=>`<small>${esc(l.date)} ${esc(l.msg||'').slice(0,30)}</small>`).join('')}</td>
+ <td><button class="mini" onclick="cusForm(${i})">编辑/跟进</button><button class="mini warn" onclick="cusDel(${i})">删</button></td></tr>`).join('');
+ return `<div class="panel"><h3>👥 客户</h3><button class="act" onclick="cusForm(-1)">➕ 添加客户（只填姓名即可）</button>
+ <table><tr><th>客户/国家/渠道</th><th>状态(直接切换)</th><th>最近报价/跟进</th><th>操作</th></tr>${rows}</table></div>
+ <div id="cusPanel"></div>`}
+function cusStatus(i,v){WS().customers[i].status=v;save();render()}
+function cusDel(i){if(confirm('删除该客户？')){WS().customers.splice(i,1);save();render()}}
+function cusForm(i){const w=WS();const c=i<0?{name:'',country:'',channel:'',job:'',contact:'',web:'',birthday:'',hobby:'',persona:'',next:'',note:'',status:'新线索',quotes:[],logs:[]}:w.customers[i];
+ document.getElementById('cusPanel').innerHTML=`<div class="panel"><h3>${i<0?'➕ 添加客户':'✏️ 编辑客户'}</h3>
+ <div class="grid2 f">
+ <div><label>* 客户姓名（必填）</label><input id="c_name" value="${esc(c.name)}"></div>
+ <div><label>国家</label><input id="c_country" value="${esc(c.country||'')}"></div>
+ <div><label>渠道来源</label><select id="c_channel">${['','阿里国际站','展会','社媒开发','Google开发','老客户转介绍','其他'].map(x=>`<option ${x===c.channel?'selected':''}>${x||'--选--'}</option>`).join('')}</select></div>
+ <div><label>状态</label><select id="c_status">${CSTAT.map(s=>`<option ${s===c.status?'selected':''}>${s}</option>`).join('')}</select></div>
+ <div><label>联系方式(邮箱/电话/社媒)</label><input id="c_contact" value="${esc(c.contact||'')}"></div>
+ <div><label>公司/职业</label><input id="c_job" value="${esc(c.job||'')}"></div>
+ <div><label>公司网站</label><input id="c_web" value="${esc(c.web||'')}"></div>
+ <div><label>生日</label><input id="c_birthday" value="${esc(c.birthday||'')}"></div>
+ <div><label>爱好</label><input id="c_hobby" value="${esc(c.hobby||'')}"></div>
+ <div><label>下次跟进日期</label><input id="c_next" type="date" value="${esc(c.next||'')}"></div>
+ </div>
+ <div class="f"><label>备注</label><textarea id="c_note">${esc(c.note||'')}</textarea></div>
+ <div class="f"><label>性格分析（可AI生成）</label><textarea id="c_persona">${esc(c.persona||'')}</textarea></div>
+ <div class="row">
+ <button class="act" onclick="cusSave(${i})">💾 保存</button>
+ <button class="mini" onclick="aiCus(${i})">✨ AI性格分析</button>
+ <button class="mini" onclick="addQuote(${i})">➕ 记一笔报价</button>
+ <button class="mini" onclick="addLog(${i})">➕ 记一条跟进</button>
+ <button class="mini" onclick="aiDev(${i})">✉️ AI写开发信</button>
+ <button class="mini" onclick="render()">取消</button></div>
+ <div class="f"><label>报价记录</label><div class="aiout">${(c.quotes||[]).map((q,j)=>`${esc(q.date)} 【${esc(q.name)}】 ${esc(q.product||'')} ¥${esc(q.price||'')} <button class="mini warn" onclick="delQuote(${i},${j})">删</button>`).join('<br>')||'暂无'}</div></div>
+ <div class="f"><label>跟进记录</label><div class="aiout">${(c.logs||[]).slice().reverse().map(l=>`${esc(l.date)} ${esc(l.msg)}`).join('<br>')||'暂无'}</div></div>
+ <div class="aiout">${aiBuf.cus||''}</div></div>`}
+function gv(id){return document.getElementById(id).value}
+function cusSave(i){const w=WS();const name=gv('c_name');if(!name){alert('姓名必填');return}
+ const c=i<0?{name:'',quotes:[],logs:[],created:today()}:w.customers[i];
+ Object.assign(c,{name,country:gv('c_country'),channel:gv('c_channel'),status:gv('c_status'),contact:gv('c_contact'),job:gv('c_job'),web:gv('c_web'),birthday:gv('c_birthday'),hobby:gv('c_hobby'),next:gv('c_next'),note:gv('c_note'),persona:gv('c_persona')});
+ if(i<0)w.customers.push(c);save();render()}
+function addQuote(i){if(i<0){alert('先保存客户，再记报价');return}
+ const c=WS().customers[i];const name=prompt('报价单名字（如 QT-2025-001）：')||('QT-'+Date.now().toString().slice(-5));
+ const product=prompt('产品：');const price=prompt('报价金额：');
+ c.quotes=c.quotes||[];c.quotes.push({date:today(),name,product,price});
+ c.status='已报价';save();render();cusForm(i)}
+function delQuote(i,j){WS().customers[i].quotes.splice(j,1);save();render();cusForm(i)}
+function addLog(i){if(i<0){alert('先保存客户');return}
+ const c=WS().customers[i];const msg=prompt('跟进内容（如：已发报价单QT-001，客户说下周回复）：');if(!msg)return;
+ c.logs=c.logs||[];c.logs.push({date:today(),msg});save();render();cusForm(i)}
+function aiCus(i){const chat=prompt('粘贴你和该客户的聊天/邮件内容：');if(!chat)return;
+ aiCall(`你是外贸沟通专家。根据以下聊天记录，分析客户性格类型、沟通偏好、在意点，并给出3条沟通建议。中文，简短。聊天记录：${chat}`,out=>{if(i>=0){WS().customers[i].persona=out.slice(0,300);save()}aiBuf.cus=out;render();if(i>=0)cusForm(i)})}
+function aiDev(i){const c=i>=0?WS().customers[i]:null;
+ aiCall(`你是外贸专家，行业：可再生能源+汽车零配件。${c?`给【${c.name}，${c.country||''}，状态${c.status}】写`:'写'}一封英文开发信，150词内，突出价值，结尾带行动号召。`,out=>{aiBuf.cus=out;save();render();if(i>=0)cusForm(i)})}
+
+// ======================================================================
+// 供应商管理
+// ======================================================================
+function vSup(){const w=WS();
+ let rows=w.suppliers.map((s,i)=>`<tr><td><b>${esc(s.name)}</b><br><small>${esc(s.addr||'')}</small></td>
+ <td>${esc(s.pros||'')}<br><small style="color:#b91c1c">${esc(s.cons||'')}</small></td>
+ <td>${esc(s.lastQuote||'')}<br>${s.priceAlert?`<span class="tag red">${esc(s.priceAlert)}</span>`:''}</td>
+ <td>${esc(s.lastContact||'')}</td>
+ <td><button class="mini" onclick="supForm(${i})">编辑/报价</button><button class="mini warn" onclick="supDel(${i})">删</button></td></tr>`).join('');
+ return `<div class="panel"><h3>🏭 供应商</h3><button class="act" onclick="supForm(-1)">➕ 添加供应商</button>
+ <table><tr><th>名称/地址</th><th>优势/劣势</th><th>最新报价(变动提示)</th><th>最近联系</th><th>操作</th></tr>${rows}</table></div>
+ <div id="supPanel"></div>`}
+function supForm(i){const w=WS();const s=i<0?{name:'',addr:'',pros:'',cons:'',lastQuote:'',lastContact:today(),priceAlert:''}:w.suppliers[i];
+ document.getElementById('supPanel').innerHTML=`<div class="panel"><h3>${i<0?'➕ 添加供应商':'✏️ 编辑供应商'}</h3>
+ <div class="grid2 f">
+ <div><label>* 供应商名称</label><input id="s_name" value="${esc(s.name)}"></div>
+ <div><label>营业地址</label><input id="s_addr" value="${esc(s.addr||'')}"></div>
+ <div><label>优势</label><textarea id="s_pros">${esc(s.pros||'')}</textarea></div>
+ <div><label>劣势</label><textarea id="s_cons">${esc(s.cons||'')}</textarea></div></div>
+ <div class="row">
+ <button class="act" onclick="supSave(${i})">💾 保存</button>
+ <button class="mini" onclick="supQuote(${i})">💰 录新报价(自动对比)</button>
+ <button class="mini" onclick="aiSup(${i},'fest')">🎁 节日祝福</button>
+ <button class="mini" onclick="aiSup(${i},'act')">🤝 激活话术</button>
+ <button class="mini" onclick="render()">取消</button></div>
+ <div class="aiout">${aiBuf.sup||''}</div></div>`}
+function supSave(i){const w=WS();const name=gv('s_name');if(!name){alert('名称必填');return}
+ const s=i<0?{name:'',lastQuote:'',lastContact:today(),priceAlert:''}:w.suppliers[i];
+ Object.assign(s,{name,addr:gv('s_addr'),pros:gv('s_pros'),cons:gv('s_cons')});
+ if(i<0)w.suppliers.push(s);save();render()}
+function supDel(i){if(confirm('删除该供应商？')){WS().suppliers.splice(i,1);save();render()}}
+function supQuote(i){if(i<0){alert('先保存供应商');return}
+ const s=WS().suppliers[i];const q=prompt(`【${s.name}】新报价（产品+价格）：`);if(!q)return;
+ if(s.lastQuote&&s.lastQuote!==q)s.priceAlert=`上次：${s.lastQuote} → 现在：${q}`;else s.priceAlert='';
+ s.lastQuote=q;s.lastContact=today();save();render();supForm(i)}
+function aiSup(i,kind){if(i<0){alert('先保存供应商');return}
+ const s=WS().suppliers[i];
+ if(kind==='fest')aiCall(`给供应商【${s.name}】写一段中文节日祝福微信话术，温暖真诚不商务腔，80字内。`,out=>{aiBuf.sup=out;save();render();supForm(i)});
+ else aiCall(`供应商【${s.name}】很久没联系。写一段中文激活话术：问候+询问近期新品/价格+表达合作意向，自然不尴尬，100字内。`,out=>{aiBuf.sup=out;save();render();supForm(i)})}
+
+// ======================================================================
+// 采购管理
+// ======================================================================
+function vPO(){const w=WS();
+ let rows=w.pos.map((p,i)=>`<tr><td><b>${esc(p.supplier)}</b></td>
+ <td>${(p.items||[]).map(it=>`${esc(it.name)} x${it.qty} @${it.price}`).join('<br>')||'-'}</td>
+ <td>¥${(+p.amount||0).toLocaleString()}</td><td>${p.status}</td><td>${esc(p.due||'')}</td><td>${esc(p.track||'')}</td>
+ <td><button class="mini" onclick="poForm(${i})">编辑</button><button class="mini" onclick="poPrint(${i})">合同</button><button class="mini" onclick="po2ship(${i})">转待出货</button><button class="mini warn" onclick="poDel(${i})">删</button></td></tr>`).join('');
+ return `<div class="panel"><h3>🏭 采购单（一张单可填多种产品）</h3><button class="act" onclick="poNew()">➕ 新采购单</button>
+ <table><tr><th>供应商</th><th>产品明细</th><th>总额</th><th>状态</th><th>交期</th><th>国内物流</th><th>操作</th></tr>${rows}</table></div>
+ <div id="poPanel"></div>`}
+function poNew(){WS().pos.push({supplier:'',items:[{name:'',qty:1,price:0}],amount:0,due:'',status:'生产中',track:'',created:today()});save();render();poForm(WS().pos.length-1)}
+function poForm(i){const p=WS().pos[i];
+ document.getElementById('poPanel').innerHTML=`<div class="panel"><h3>✏️ 采购单编辑</h3>
+ <div class="grid2 f">
+ <div><label>* 供应商名称</label><input id="p_sup" value="${esc(p.supplier)}"></div>
+ <div><label>交期</label><input id="p_due" type="date" value="${esc(p.due||'')}"></div>
+ <div><label>状态</label><select id="p_status">${['生产中','已出货','已完成'].map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}</select></div>
+ <div><label>国内物流单号</label><input id="p_track" value="${esc(p.track||'')}"></div></div>
+ <div class="f"><label>产品明细（多行）</label>
+ <table><tr><th>产品名</th><th>数量</th><th>单价</th><th></th></tr>
+ ${(p.items||[]).map((it,j)=>`<tr><td><input value="${esc(it.name)}" onchange="poSet(${i},${j},'name',this.value)" style="width:100%"></td>
+ <td><input type="number" value="${it.qty}" onchange="poSet(${i},${j},'qty',this.value)" style="width:70px"></td>
+ <td><input type="number" value="${it.price}" onchange="poSet(${i},${j},'price',this.value)" style="width:90px"></td>
+ <td><button class="mini warn" onclick="poDelItem(${i},${j})">删行</button></td></tr>`).join('')}</table>
+ <div class="row"><button class="mini" onclick="poAddItem(${i})">➕ 加一行产品</button>
+ <button class="mini" onclick="poCalc(${i})">🔄 按明细重算总额</button></div></div>
+ <div class="f"><label>总额（可手动改）</label><input id="p_amount" type="number" value="${p.amount||0}"></div>
+ <div class="row"><button class="act" onclick="poSave(${i})">💾 保存</button>
+ <button class="mini" onclick="poPrint(${i})"> 生成采购合同</button>
+ <button class="mini" onclick="render()">取消</button></div></div>`}
+function poSet(i,j,f,v){const it=WS().pos[i].items[j];it[f]=f==='name'?v:(+v||0)}
+function poAddItem(i){WS().pos[i].items.push({name:'',qty:1,price:0});save();poForm(i)}
+function poDelItem(i,j){WS().pos[i].items.splice(j,1);poForm(i)}
+function poCalc(i){const p=WS().pos[i];p.amount=p.items.reduce((s,it)=>s+(+it.qty||0)*(+it.price||0),0);save();poForm(i)}
+function poSave(i){const p=WS().pos[i];p.supplier=gv('p_sup');if(!p.supplier){alert('供应商必填');return}
+ p.due=gv('p_due');p.status=gv('p_status');p.track=gv('p_track');p.amount=+gv('p_amount')||p.amount;save();render()}
+function poDel(i){if(confirm('删除该采购单？')){WS().pos.splice(i,1);save();render()}}
+function poPrint(i){const p=WS().pos[i];const win=window.open('','_blank');
+ win.document.write(`<h2>采购合同</h2><p>甲方：（你的公司名）</p><p>乙方：${esc(p.supplier)}</p>
+ <table border="1" cellpadding="8"><tr><th>品名</th><th>数量</th><th>单价</th></tr>${(p.items||[]).map(it=>`<tr><td>${esc(it.name)}</td><td>${it.qty}</td><td>${it.price}</td></tr>`).join('')}</table>
+ <p>总额：${p.amount} 元。交期：${esc(p.due||'另行约定')}。质量要求：按双方确认样品/规格书执行。签字盖章：</p>`);win.print()}
+function po2ship(i){const p=WS().pos[i];const customer=prompt('对应客户名：')||'';
+ const amount=+prompt('对客售价(人民币)：',p.amount)||p.amount;
+ WS().orders.push({customer,product:(p.items||[]).map(it=>it.name).join('、'),amount,cost:p.amount,freight:0,misc:0,due:p.due,status:'待出货',trackCn:p.track,trackInt:'',logi:[],reviewDone:false,created:today()});
+ p.status='已出货';save();render()}
+
+// ======================================================================
+// 订单管理
+// ======================================================================
+function vOrd(){const w=WS();
+ let rows=w.orders.map((o,i)=>{const profit=(+o.amount)-(+o.cost||0)-(+o.freight||0)-(+o.misc||0);
+ return `<tr><td><b>${esc(o.customer)}</b><br><small>${esc(o.product||'')}</small></td>
+ <td>¥${(+o.amount).toLocaleString()}<br><b style="color:${profit>=0?'#15803d':'#b91c1c'}">利润¥${profit.toLocaleString()}</b></td>
+ <td>${o.status}</td>
+ <td>国内:${esc(o.trackCn||'-')}<br>国际:${esc(o.trackInt||'-')}<br><small>${esc(o.logi&&o.logi.length?o.logi[o.logi.length-1]:'')}</small></td>
+ <td><button class="mini" onclick="ordForm(${i})">编辑/跟进</button><button class="mini" onclick="oNext(${i})">推进</button><button class="mini warn" onclick="ordDel(${i})">删</button></td></tr>`}).join('');
+ return `<div class="panel"><h3>🚢 客户订单</h3><button class="act" onclick="ordNew()">➕ 手动加订单</button>
+ <table><tr><th>客户/产品</th><th>售价/利润</th><th>状态</th><th>物流(国内/国际/最新)</th><th>操作</th></tr>${rows}</table></div>
+ <div id="ordPanel"></div>`}
+function ordNew(){WS().orders.push({customer:'',product:'',amount:0,cost:0,freight:0,misc:0,status:'待出货',trackCn:'',trackInt:'',logi:[],reviewDone:false,created:today()});save();render();ordForm(WS().orders.length-1)}
+function ordForm(i){const o=WS().orders[i];
+ document.getElementById('ordPanel').innerHTML=`<div class="panel"><h3>✏️ 订单编辑</h3>
+ <div class="grid2 f">
+ <div><label>* 客户名</label><input id="o_customer" value="${esc(o.customer)}"></div>
+ <div><label>产品</label><input id="o_product" value="${esc(o.product||'')}"></div>
+ <div><label>售价</label><input id="o_amount" type="number" value="${o.amount||0}"></div>
+ <div><label>采购成本</label><input id="o_cost" type="number" value="${o.cost||0}"></div>
+ <div><label>国际物流费</label><input id="o_freight" type="number" value="${o.freight||0}"></div>
+ <div><label>杂费</label><input id="o_misc" type="number" value="${o.misc||0}"></div>
+ <div><label>状态</label><select id="o_status">${['待出货','运输中','已签收','已完成'].map(s=>`<option ${s===o.status?'selected':''}>${s}</option>`).join('')}</select></div>
+ <div><label>国内物流单号</label><input id="o_trackCn" value="${esc(o.trackCn||'')}"></div>
+ <div><label>国际物流单号</label><input id="o_trackInt" value="${esc(o.trackInt||'')}"></div></div>
+ <div class="f"><label>物流最新消息（追加）</label><div class="row"><input id="o_logiNew" placeholder="如：7-12 到达悉尼清关行" style="width:300px"><button class="mini" onclick="oLogi(${i})">➕ 追加</button></div>
+ <div class="aiout">${(o.logi||[]).slice().reverse().map(x=>esc(x)).join('<br>')||'暂无'}</div></div>
+ <div class="row"><button class="act" onclick="ordSave(${i})">💾 保存</button>
+ <button class="mini" onclick="aiShip(${i})">✉️ AI发货通知</button>
+ <button class="mini" onclick="aiUrge(${i})">⏰ AI催客户</button>
+ <button class="mini" onclick="aiReview(${i})">⭐ AI要好评</button>
+ <button class="mini" onclick="render()">取消</button></div>
+ <div class="aiout">${aiBuf.ord||''}</div></div>`}
+function oLogi(i){const v=document.getElementById('o_logiNew').value;if(!v)return;
+ const o=WS().orders[i];o.logi=o.logi||[];o.logi.push(today()+' '+v);save();ordForm(i)}
+function ordSave(i){const o=WS().orders[i];o.customer=gv('o_customer');if(!o.customer){alert('客户必填');return}
+ o.product=gv('o_product');o.amount=+gv('o_amount')||0;o.cost=+gv('o_cost')||0;o.freight=+gv('o_freight')||0;o.misc=+gv('o_misc')||0;
+ o.status=gv('o_status');o.trackCn=gv('o_trackCn');o.trackInt=gv('o_trackInt');save();render()}
+function ordDel(i){if(confirm('删除该订单？')){WS().orders.splice(i,1);save();render()}}
+function oNext(i){const st=['待出货','运输中','已签收','已完成'];const o=WS().orders[i];o.status=st[Math.min(st.indexOf(o.status)+1,3)];save();render()}
+function aiShip(i){const o=WS().orders[i];
+ aiCall(`客户【${o.customer}】订单【${o.product}】已发货，国际单号${o.trackInt||'(待填)'}。写英文发货通知邮件：含单号、预计时效、到货后注意事项，100词内。`,out=>{aiBuf.ord=out;save();render();ordForm(i)})}
+function aiUrge(i){const o=WS().orders[i];
+ aiCall(`客户【${o.customer}】订单【${o.product}】状态【${o.status}】，物流最新：${(o.logi||[]).slice(-1)[0]||'无'}。写英文消息：礼貌提醒客户（到港提货/付尾款/确认收货，按状态选），100词内。`,out=>{aiBuf.ord=out;save();render();ordForm(i)})}
+function aiReview(i){const o=WS().orders[i];o.reviewDone=true;
+ aiCall(`客户【${o.customer}】的订单【${o.product}】已签收。写英文消息：提醒尽快试用、有问题随时联系、满意请留好评。热情简洁，80词内。`,out=>{aiBuf.ord=out;save();render();ordForm(i)})}
+
+// ======================================================================
+// 选品分析
+// ======================================================================
+function vPick(){const w=WS();w.pick=w.pick||{};
+ return `<div class="panel"><h3>🎯 选品分析</h3>
+ <div class="row"><input id="pk_q" placeholder="想调研的产品，如 portable solar generator" value="${esc(w.pick.q||'')}" style="width:300px">
+ <button class="act" onclick="pickAI()">🧠 AI 痛点/卖点分析</button></div>
+ <div class="f"><label>或：粘贴亚马逊 Best Sellers / 买家评论，AI 提炼市面痛点</label>
+ <textarea id="pk_paste" placeholder="粘贴产品标题列表或买家评论…"></textarea>
+ <button class="act" onclick="pickPaste()">🔍 AI 提炼痛点</button></div>
+ <div class="aiout">${aiBuf.pick||'AI 输出：用户痛点 / 目标人群 / 核心卖点 / 差异化建议 / 风险提示'}</div></div>`}
+function pickAI(){const q=document.getElementById('pk_q').value;WS().pick.q=q;save();
+ aiCall(`你是跨境电商选品专家，行业：可再生能源+汽车零配件。产品【${q}】。请分析：1)市面用户主要痛点 2)目标人群 3)核心卖点 4)差异化方向 5)认证/物流风险。中文，分点，300字内。`,out=>{aiBuf.pick=out;save();render()})}
+function pickPaste(){const t=document.getElementById('pk_paste').value;if(!t){alert('先粘贴内容');return}
+ aiCall(`以下是某平台产品列表/买家评论。请提炼：最集中的3-5个痛点、用户最在意的卖点、可切入的差异化机会。中文，分点：\n${t}`,out=>{aiBuf.pick=out;save();render()})}
+
+// ======================================================================
+// 同行分析
+// ======================================================================
+function vComp(){const w=WS();w.competitors=w.competitors||[];
+ let rows=w.competitors.map((c,i)=>`<tr><td><b>${esc(c.name)}</b><br><small>${esc(c.url||'')}</small></td><td>${esc((c.note||'').slice(0,80))}</td>
+ <td><button class="mini" onclick="compForm(${i})">编辑</button><button class="mini" onclick="compAI(${i})">AI 分析</button><button class="mini warn" onclick="compDel(${i})">删</button></td></tr>`).join('');
+ return `<div class="panel"><h3>⚔️ 同行分析</h3><button class="act" onclick="compForm(-1)">➕ 添加同行</button>
+ <table><tr><th>同行/店铺网址</th><th>备注/最近分析</th><th>操作</th></tr>${rows}</table></div>
+ <div id="compPanel"></div>
+ <div class="panel"><small>用法：录入同行店铺 → 打开对方店铺复制首页/新品页内容 → 点「AI 分析」粘贴，AI 对比产品线/价格带/新动向/你的机会。</small></div>`}
+function compForm(i){const w=WS();const c=i<0?{name:'',url:'',note:''}:w.competitors[i];
+ document.getElementById('compPanel').innerHTML=`<div class="panel"><h3>${i<0?'➕ 添加同行':'✏️ 编辑同行'}</h3>
+ <div class="grid2 f"><div><label>* 名称</label><input id="cp_name" value="${esc(c.name)}"></div>
+ <div><label>店铺网址</label><input id="cp_url" value="${esc(c.url||'')}"></div></div>
+ <div class="f"><label>备注</label><textarea id="cp_note">${esc(c.note||'')}</textarea></div>
+ <div class="row"><button class="act" onclick="compSave(${i})">💾 保存</button><button class="mini" onclick="render()">取消</button></div></div>`}
+function compSave(i){const w=WS();const name=gv('cp_name');if(!name){alert('名称必填');return}
+ const c=i<0?{name:''}:w.competitors[i];Object.assign(c,{name,url:gv('cp_url'),note:gv('cp_note')});
+ if(i<0)w.competitors.push(c);save();render()}
+function compDel(i){if(confirm('删除？')){WS().competitors.splice(i,1);save();render()}}
+function compAI(i){const c=WS().competitors[i];const t=prompt('粘贴该同行店铺/产品页内容（新品、价格等）：')||'';
+ aiCall(`你是外贸情报分析师。同行【${c.name}】(${c.url||''})，备注：${c.note||''}。${t?('其页面内容：'+t):''} 请输出：产品线/价格带/近期新动向/优势劣势/对我们的3条应对建议。中文，分点。`,out=>{c.note='['+today()+'] '+out.slice(0,300);save();alert(out);render()})}
+
+// ======================================================================
+// 热点雷达
+// ======================================================================
+function vRadar(){const w=WS();
+ return `<div class="panel"><h3>🔥 热点雷达</h3>
+ <div class="row">${w.markets.map((m,i)=>`<span class="tag">${esc(m)} <button class="mini warn" onclick="rmMarket(${i})">✕</button></span>`).join('')}
+ <button class="mini" onclick="addMarket()">➕ 加市场</button></div>
+ <div class="row"><input id="rq" placeholder="你的产品关键词，如 solar panel" value="${esc(w.radar.q||'')}" style="width:260px">
+ <button class="act" onclick="radarGo()">抓取热点+AI分析</button></div>
+ <div id="radarBox" class="aiout">数据源：Google 每日热搜 + YouTube 热门（真实热度）。TikTok 等封闭平台抓不了 → 把链接/内容粘到「🤖 AI」选"社媒链接分析"。</div></div>`}
+function addMarket(){const v=prompt('市场名或国家代码（如：英国 或 GB）：');if(!v)return;
+ const MAP={'澳大利亚':'AU','德国':'DE','美国':'US','东南亚':'SG','英国':'GB','日本':'JP','韩国':'KR','印度':'IN','巴西':'BR','法国':'FR','加拿大':'CA','墨西哥':'MX','越南':'VN','泰国':'TH','马来西亚':'MY','印尼':'ID','菲律宾':'PH','阿联酋':'AE','西班牙':'ES','意大利':'IT'};
+ WS().markets.push(MAP[v]||v);save();render()}
+function rmMarket(i){WS().markets.splice(i,1);save();render()}
+function radarGo(){const w=WS();w.radar.q=document.getElementById('rq').value;save();
+ const box=document.getElementById('radarBox');box.innerText='抓取中…';
+ const urls=[];
+ w.markets.forEach(m=>{const geo=(m.length<=3?m:({'澳大利亚':'AU','德国':'DE','美国':'US','东南亚':'SG','英国':'GB'}[m]||'US'));
+  urls.push(fetch(`https://trends.google.com/trending/rss?geo=${geo}`).then(r=>r.text()).then(t=>parseTrend(t,m)).catch(()=>`【${m}】抓取失败(网络限制)`))});
+ Promise.all(urls).then(arr=>{const all=arr.join('\n');box.innerText=all;
+  if(w.radar.q)aiCall(`以下是各市场今日热点：\n${all.slice(0,3000)}\n\n我的产品：${w.radar.q}。请挑出3-5条能结合做内容营销或开发信切入点的热点，每条给一句开发信开头。中文，简短。`,out=>{box.innerText=all+'\n\n===== AI 分析 =====\n'+out;save()})})}
+function parseTrend(xml,market){const d=new DOMParser().parseFromString(xml,'text/xml');
+ const items=[...d.querySelectorAll('item')].slice(0,8);
+ return `【${market}】\n`+items.map(it=>{const t=(it.querySelector('title')||{}).textContent||'';
+  const trNode=it.getElementsByTagName('ht:approximate_traffic')[0];const tr=trNode?trNode.textContent:'';
+  return `• ${t}${tr?' ('+tr+')':''}`}).join('\n')}
+
+// ======================================================================
+// 工具：汇率/世界时钟/海关编码
+// ======================================================================
+function vTool(){return `<div class="panel"><h3>💱 每日汇率 <button class="mini" onclick="fetchRates()">🔄 刷新</button></h3>
+ <div id="rateBox" class="aiout">点刷新，自动抓取今日真实牌价（来源：open.er-api.com，每日更新）</div></div>
+ <div class="panel"><h3>🌍 世界时间表 <button class="mini" onclick="render()">🔄 刷新</button></h3>
+ <table><tr><th>城市</th><th>当地时间</th><th>工作时段提示</th></tr>${clockRows()}</table>
+ <small>给客户发消息前看一眼，当地 9:00-18:00 发信回复率最高。</small></div>
+ <div class="panel"><h3>🔢 海关编码（HS）查询</h3>
+ <div class="row"><input id="hs_q" placeholder="产品描述，如：便携式太阳能储能电源 1000W" style="width:320px">
+ <button class="act" onclick="hsAI()">🧠 AI 归类</button></div>
+ <div class="aiout">${aiBuf.hs||'AI 给出：建议HS编码(2-3个候选) + 归类依据 + 退税率参考 + 出口认证提示。\n官方复核：中国海关归类网 / hscode.net'}</div></div>`}
+function fetchRates(){const box=document.getElementById('rateBox');box.innerText='抓取中…';
+ fetch('https://open.er-api.com/v6/latest/USD').then(r=>r.json()).then(j=>{const r=j.rates;const cny=r.CNY;
+  const one=k=>(cny/r[k]).toFixed(4);
+  box.innerText=`1 美元 = ${cny.toFixed(4)} 人民币\n1 欧元 = ${one('EUR')} 元\n1 澳元 = ${one('AUD')} 元\n1 英镑 = ${one('GBP')} 元\n1 新加坡元 = ${one('SGD')} 元\n100 日元 = ${(cny/r.JPY*100).toFixed(4)} 元\n更新时间：${j.time_last_update_utc||''}`}).catch(e=>{box.innerText='抓取失败：'+e.message})}
+function clockRows(){const Z=[['北京（你）','Asia/Shanghai'],['悉尼·澳大利亚','Australia/Sydney'],['柏林·德国','Europe/Berlin'],['纽约·美国','America/New_York'],['洛杉矶·美国','America/Los_Angeles'],['新加坡·东南亚','Asia/Singapore'],['雅加达·印尼','Asia/Jakarta'],['迪拜·阿联酋','Asia/Dubai']];
+ return Z.map(z=>{const d=new Date();const t=d.toLocaleTimeString('zh-CN',{timeZone:z[1],hour:'2-digit',minute:'2-digit'});
+  const h=+d.toLocaleTimeString('zh-CN',{timeZone:z[1],hour:'2-digit',hour12:false});
+  return `<tr><td>${z[0]}</td><td><b>${t}</b></td><td>${(h>=9&&h<18)?'<span class="tag green">工作时段，适合发信</span>':'<span class="tag">非工作时段</span>'}</td></tr>`}).join('')}
+function hsAI(){const q=document.getElementById('hs_q').value;if(!q){alert('先填产品描述');return}
+ aiCall(`你是海关归类专家，行业：可再生能源+汽车零配件。产品描述【${q}】。请输出：1)建议HS编码（中国出口，2-3个候选，8-10位）2)归类依据 3)出口退税率参考（注明仅供参考需复核）4)出口澳大利亚/德国/美国/东南亚常见认证要求。中文，分点。`,out=>{aiBuf.hs=out;save();render()})}
+
+// ======================================================================
+// 导师聊天
+// ======================================================================
+const MENTOR=`你是"老周"，一位做了20年外贸的资深导师，也是用户的创业合伙人。你精通：外贸全流程、阿里国际站运营、可再生能源与汽车零配件行业、选品、供应链、客户心理学、创业心态。说话风格：经验丰富、直给、接地气，先给结论再给理由，必要时提醒风险。每次回答先称呼"伙计"，结尾给一个可执行的下一步动作。`;
+function vChat(){const w=WS();w.chat=w.chat||[];w.chatSum=w.chatSum||[];
+ return `<div class="panel"><h3>💬 导师·老周（外贸老炮 + 创业伙伴）</h3>
+ <div class="chat" id="chatBox">${w.chat.slice(-40).map(m=>`<div class="msg ${m.role==='u'?'u':'a'}">${m.role==='u'?'🧑 你':'🧓 老周'}：${esc(m.text)}</div>`).join('')||'<small>和老周聊聊吧：选品、客户、报价、创业困惑，什么都行…</small>'}</div>
+ <div class="f"><textarea id="chatIn" placeholder="今天想聊点什么？比如：德国客户一直压价怎么办？"></textarea></div>
+ <div class="row"><button class="act" onclick="sendChat()">📨 发送</button>
+ <button class="mini" onclick="chatSummary()">📝 总结今日谈话</button>
+ <button class="mini" onclick="chatExport()">📤 导出聊天记录</button>
+ <button class="mini warn" onclick="chatClear()">🧹 清空聊天</button></div></div>
+ <div class="panel"><h3>📚 谈话总结归档</h3>
+ <div class="aiout">${w.chatSum.slice().reverse().map(s=>`【${s.date}】\n${esc(s.text)}\n`).join('\n')||'暂无总结。每天聊完点"总结今日谈话"，自动归档。'}</div></div>`}
+function sendChat(){const w=WS();const t=document.getElementById('chatIn').value.trim();if(!t)return;
+ w.chat.push({role:'u',text:t,time:Date.now()});save();render();
+ const box=document.getElementById('chatBox');if(box)box.scrollTop=box.scrollHeight;
+ const msgs=[{role:'system',content:MENTOR}].concat(w.chat.slice(-12).map(m=>({role:m.role==='u'?'user':'assistant',content:m.text})));
+ aiCallMsgs(msgs,out=>{w.chat.push({role:'a',text:out,time:Date.now()});save();render()})}
+function chatSummary(){const w=WS();const todays=w.chat.filter(m=>new Date(m.time).toISOString().slice(0,10)===today());
+ if(!todays.length){alert('今天还没和老周聊过天');return}
+ const txt=todays.map(m=>(m.role==='u'?'我：':'老周：')+m.text).join('\n');
+ aiCallMsgs([{role:'system',content:MENTOR},{role:'user',content:`请把今天我们聊的内容总结归档，结构：1)聊了哪些话题 2)达成的结论/决定 3)我的待办清单 4)老周送我的一句话。中文，分点。聊天内容：\n${txt}`}],out=>{w.chatSum=w.chatSum||[];w.chatSum.push({date:today(),text:out});save();render()})}
+function chatExport(){const w=WS();const txt=w.chat.map(m=>`${new Date(m.time).toLocaleString()} ${m.role==='u'?'我':'老周'}：${m.text}`).join('\n')+'\n\n===== 总结归档 =====\n'+w.chatSum.map(s=>`【${s.date}】\n${s.text}`).join('\n');
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain'}));a.download='导师谈话记录_'+today()+'.txt';a.click()}
+function chatClear(){if(confirm('清空聊天记录？（总结归档会保留）')){WS().chat=[];save();render()}}
+
+// ======================================================================
+// AI 助手
+// ======================================================================
+const PROVIDERS={
+ deepseek:{url:'https://api.deepseek.com/chat/completions',def:'deepseek-chat',name:'DeepSeek'},
+ qwen:{url:'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',def:'qwen-plus',name:'通义千问'},
+ zhipu:{url:'https://open.bigmodel.cn/api/paas/v4/chat/completions',def:'glm-4-flash',name:'智谱'},
+ moonshot:{url:'https://api.moonshot.cn/v1/chat/completions',def:'moonshot-v1-8k',name:'Moonshot'},
+ custom:{url:'',def:'',name:'自定义'}};
+function vAI(){return `<div class="panel"><h3>🤖 AI 助手 <small>当前：${PROVIDERS[DB.ai.provider]?PROVIDERS[DB.ai.provider].name:'?'} / ${esc(DB.ai.model)}</small></h3>
+ <div class="row"><select id="aiTask">
+ <option value="dev">写开发信</option><option value="reply">回询盘</option><option value="trans">翻译/润色</option><option value="fest">节日祝福(客户)</option><option value="soc">社媒链接分析</option></select>
+ <input id="aiCtx" placeholder="对象/产品/背景，如：德国客户，太阳能支架" style="width:300px"></div>
+ <textarea id="aiText" placeholder="粘贴要翻译/润色/回复的原文，或 TikTok/社媒链接内容"></textarea>
+ <button class="act" onclick="aiGo()">生成</button>
+ <div class="aiout">${aiBuf.main||'生成结果会出现在这里，可复制'}</div></div>`}
+function aiGo(){const t=document.getElementById('aiTask').value;const ctx=document.getElementById('aiCtx').value;const txt=document.getElementById('aiText').value;
+ const prompts={dev:`你是外贸专家，行业：可再生能源+汽车零配件。给【${ctx}】写一封英文开发信，150词内，突出价值，结尾带行动号召。`,
+ reply:`你是外贸专家。请回复以下内容（英文，专业友好）：${ctx} 原文：${txt}`,
+ trans:`把以下内容翻译/润色成地道商务英语：${txt}`,
+ fest:`给【${ctx}】写一段英文节日祝福，温暖不推销，80词内。`,
+ soc:`以下是某社媒(TikTok等)内容：${txt}。请分析：热度信号/受众/能否结合【${ctx||'我的产品'}】做营销，给3条可执行建议。中文。`};
+ aiCall(prompts[t],out=>{aiBuf.main=out;save();render()})}
+function openAI(){const p=prompt('选服务商（输数字）：\n1 DeepSeek\n2 通义千问\n3 智谱\n4 Moonshot\n5 自定义(自己填API地址)',{deepseek:'1',qwen:'2',zhipu:'3',moonshot:'4',custom:'5'}[DB.ai.provider]||'1');
+ if(!p)return;const keyMap={'1':'deepseek','2':'qwen','3':'zhipu','4':'moonshot','5':'custom'};
+ const prov=keyMap[p]||'deepseek';
+ const k=prompt('粘贴该服务商的 API Key：',DB.ai.key||'');if(k===null)return;
+ let url='';if(prov==='custom'){url=prompt('API 完整地址（以 /chat/completions 结尾）：',DB.ai.url||'');if(!url)return}
+ const m=prompt('模型名：',PROVIDERS[prov].def||DB.ai.model||'');
+ DB.ai={provider:prov,key:k.trim(),model:m||PROVIDERS[prov].def,url:url};save();
+ alert('已切换为 '+PROVIDERS[prov].name+'，钥匙只存在你本地')}
+function aiCall(prompt,cb){aiCallMsgs([{role:'user',content:prompt}],cb)}
+function aiCallMsgs(msgs,cb){if(!DB.ai.key){alert('还没设置 AI 钥匙！点右上角"⚙️ AI 设置"。');openAI();return}
+ const P=PROVIDERS[DB.ai.provider]||PROVIDERS.deepseek;
+ const url=DB.ai.provider==='custom'?DB.ai.url:P.url;
+ fetch(url,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+DB.ai.key},
+ body:JSON.stringify({model:DB.ai.model,messages:msgs})})
+ .then(r=>r.json()).then(d=>{if(d.error)throw new Error(d.error.message);cb(d.choices[0].message.content)})
+ .catch(e=>alert('AI 调用失败：'+e.message+'\n（检查钥匙/模型名/网络/余额）'))}
+
+// ======================================================================
+// 备份/导入
+// ======================================================================
+function exportData(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(DB)],{type:'application/json'}));
+ a.download='外贸工作台备份_'+today()+'.json';a.click()}
+function importData(inp){const f=inp.files[0];if(!f)return;const r=new FileReader();
+ r.onload=()=>{if(confirm('导入将覆盖当前全部数据，确定？')){DB=JSON.parse(r.result);save();cur=0;initWS();render()}};r.readAsText(f);inp.value=''}
+
+// ======================================================================
+// 启动
+// ======================================================================
+initWS();
+render();
+checkLock();
+</script>
+</body>
+</html>
