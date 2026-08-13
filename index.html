@@ -522,7 +522,7 @@ function compAI(i){const c=WS().competitors[i];const t=prompt('粘贴该同行�
  aiCall(`你是外贸情报分析师。同行【${c.name}】(${c.url||''})，备注：${c.note||''}。${t?('其页面内容：'+t):''} 请输出：产品线/价格带/近期新动向/优势劣势/对我们的3条应对建议。中文，分点。`,out=>{c.note='['+today()+'] '+out.slice(0,300);save();alert(out);render()})}
 
 // ======================================================================
-// 热点雷达
+// 热点雷达（已修改：使用代理地址）
 // ======================================================================
 function vRadar(){const w=WS();
  return `<div class="panel"><h3>🔥 热点雷达</h3>
@@ -539,7 +539,8 @@ function radarGo(){const w=WS();w.radar.q=document.getElementById('rq').value;sa
  const box=document.getElementById('radarBox');box.innerText='抓取中…';
  const urls=[];
  w.markets.forEach(m=>{const geo=(m.length<=3?m:({'澳大利亚':'AU','德国':'DE','美国':'US','东南亚':'SG','英国':'GB'}[m]||'US'));
-  urls.push(fetch(`https://trends.google.com/trending/rss?geo=${geo}`).then(r=>r.text()).then(t=>parseTrend(t,m)).catch(()=>`【${m}】抓取失败(网络限制)`))});
+  // ✅ 已修改：通过代理服务器请求 Google Trends
+  urls.push(fetch(`https://boundary-dusky.vercel.app/proxy/https://trends.google.com/trending/rss?geo=${geo}`).then(r=>r.text()).then(t=>parseTrend(t,m)).catch(()=>`【${m}】抓取失败(网络限制)`))});
  Promise.all(urls).then(arr=>{const all=arr.join('\n');box.innerText=all;
   if(w.radar.q)aiCall(`以下是各市场今日热点：\n${all.slice(0,3000)}\n\n我的产品：${w.radar.q}。请挑出3-5条能结合做内容营销或开发信切入点的热点，每条给一句开发信开头。中文，简短。`,out=>{box.innerText=all+'\n\n===== AI 分析 =====\n'+out;save()})})}
 function parseTrend(xml,market){const d=new DOMParser().parseFromString(xml,'text/xml');
